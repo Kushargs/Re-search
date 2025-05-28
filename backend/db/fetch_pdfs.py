@@ -52,7 +52,11 @@ CATEGORY_GROUPS = {
 }
 
 def get_db_session(max_retries=3):
-    """Establish database connection with retry logic"""
+    """
+    Attempts to establish a database session with retry logic.
+    
+    Tries to connect to the database up to `max_retries` times, waiting longer between each attempt. Raises an exception if all attempts fail.
+    """
     retry_count = 0
     while retry_count < max_retries:
         try:
@@ -70,13 +74,15 @@ def get_db_session(max_retries=3):
 
 def build_category_filter(categories):
     """
-    Build SQL filter condition for the given categories.
+    Constructs an SQL WHERE clause condition to filter papers by specified categories.
+    
+    If a category group name is provided, it is expanded to its associated categories. If no categories are given, returns a condition that does not filter results.
     
     Args:
-        categories: List of category codes or a category group name
-        
+        categories: A list of category codes or a category group name.
+    
     Returns:
-        SQL condition for the WHERE clause
+        A string representing the SQL condition for filtering by categories.
     """
     # If categories is a string, check if it's a category group
     if isinstance(categories, str):
@@ -99,15 +105,14 @@ def build_category_filter(categories):
 
 def get_papers_needing_pdfs(session, categories=None, limit=FETCH_LIMIT):
     """
-    Get papers that don't have PDFs yet, optionally filtered by categories.
+    Retrieves papers from the database that have not yet had their PDFs fetched, with optional filtering by categories and a limit on the number of results.
     
     Args:
-        session: Database session
-        categories: List of categories or a category group name (e.g., "quantum")
-        limit: Maximum number of papers to fetch
-        
+        categories: A list of category names or a category group name to filter papers. If None, no category filtering is applied.
+        limit: The maximum number of papers to retrieve.
+    
     Returns:
-        List of papers needing PDFs
+        A list of dictionaries, each containing the paper's ID, link, and the number of previous PDF fetch attempts.
     """
     try:
         # Build category filter
@@ -137,8 +142,9 @@ def get_papers_needing_pdfs(session, categories=None, limit=FETCH_LIMIT):
 
 def download_pdf(paper_id, paper_link):
     """
-    Download PDF for a paper and save it to the PDF directory.
-    Returns the path to the saved PDF or None if download failed.
+    Downloads the PDF of a paper from arXiv and saves it locally.
+    
+    Converts the provided arXiv abstract link to a PDF URL, downloads the PDF, and stores it in the configured directory. If the PDF already exists, returns its path. Returns the path to the saved PDF on success, or None if the download fails or the file is invalid.
     """
     # Convert link from /abs/ format to /pdf/ format
     if '/abs/' in paper_link:
@@ -189,7 +195,12 @@ def download_pdf(paper_id, paper_link):
 
 def update_paper_status(session, paper_id, success, pdf_path=None):
     """
-    Update the paper's PDF status in the database.
+    Updates the PDF fetch status, attempt count, fetch date, and file path for a paper in the database.
+    
+    Args:
+        paper_id: The unique identifier of the paper to update.
+        success: Boolean indicating whether the PDF fetch was successful.
+        pdf_path: Optional path to the downloaded PDF file.
     """
     try:
         query = text("""
@@ -218,11 +229,13 @@ def update_paper_status(session, paper_id, success, pdf_path=None):
 
 def fetch_pdfs(categories=None, limit=None):
     """
-    Main function to fetch PDFs for papers in specified categories.
+    Fetches PDFs for papers missing them in the specified categories and updates their status in the database.
+    
+    Retrieves papers that have not yet had their PDFs fetched, downloads the PDFs from arXiv, saves them locally, and updates the database with the fetch results. Supports optional category filtering and limiting the number of papers processed. Implements rate limiting between requests and logs progress and errors throughout the process.
     
     Args:
-        categories: List of categories or a category group name (e.g., "quantum")
-        limit: Maximum number of papers to process (overrides FETCH_LIMIT)
+        categories: A list of category names or a category group name to filter papers. If None, processes papers from all categories.
+        limit: The maximum number of papers to process. If None, uses the default fetch limit.
     """
     try:
         session = get_db_session()
@@ -275,14 +288,18 @@ def fetch_pdfs(categories=None, limit=None):
             session.close()
 
 def list_categories():
-    """List all available category groups and their categories"""
+    """
+    Prints all available category groups and their associated categories to standard output.
+    """
     print("Available category groups:")
     for group, categories in CATEGORY_GROUPS.items():
         print(f"  {group}: {', '.join(categories)}")
 
 def main():
     """
-    Main entry point with command-line argument support.
+    Parses command-line arguments and orchestrates the PDF fetching workflow.
+    
+    Handles category selection, fetch limits, and listing of available category groups. Manages process exit codes for normal completion, user interruption, and unhandled exceptions.
     """
     parser = argparse.ArgumentParser(description="Fetch arXiv PDFs for specified categories")
     parser.add_argument("--category", "-c", help="Category or category group to fetch (default: quantum)")
